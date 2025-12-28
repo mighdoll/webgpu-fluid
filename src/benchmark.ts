@@ -62,14 +62,14 @@ export const runBenchmark = async (device: GPUDevice, width: number, height: num
     compute: { module: computeModule, entryPoint: "main" },
   });
 
-  // Fragment bind groups: TWO groups (group 0: divergence, group 1: pressure)
-  const fragBindGroup0 = device.createBindGroup({
+  // Fragment bind group: ONE group with 2 bindings (fair comparison)
+  // Fragment uses 2 bindings, compute uses 3 (adds storage output)
+  const fragBind = device.createBindGroup({
     layout: fragPipeline.getBindGroupLayout(0),
-    entries: [{ binding: 0, resource: divergenceTex.createView() }],
-  });
-  const fragBindGroup1 = device.createBindGroup({
-    layout: fragPipeline.getBindGroupLayout(1),
-    entries: [{ binding: 0, resource: pressureTex.createView() }],
+    entries: [
+      { binding: 0, resource: divergenceTex.createView() },
+      { binding: 1, resource: pressureTex.createView() },
+    ],
   });
 
   // Compute bind group: ONE group with 3 bindings
@@ -148,8 +148,7 @@ export const runBenchmark = async (device: GPUDevice, width: number, height: num
       ...(ts && { timestampWrites: ts }),
     });
     pass.setPipeline(fragPipeline);
-    pass.setBindGroup(0, fragBindGroup0);  // divergence
-    pass.setBindGroup(1, fragBindGroup1);  // pressure
+    pass.setBindGroup(0, fragBind);
     pass.draw(4);
     pass.end();
   };

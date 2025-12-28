@@ -1,6 +1,7 @@
-// Jacobi pattern: TWO bind groups (like original)
+// Jacobi pattern: ONE bind group (fair comparison with compute)
+// Fragment uses 2 bindings, compute uses 3 (adds storage output)
 @group(0) @binding(0) var divergence : texture_2d<f32>;
-@group(1) @binding(0) var pressure : texture_2d<f32>;
+@group(0) @binding(1) var pressure : texture_2d<f32>;
 
 @fragment
 fn main(@builtin(position) coords: vec4<f32>) -> @location(0) f32 {
