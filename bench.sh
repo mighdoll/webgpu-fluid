@@ -4,7 +4,7 @@
 # Usage: ./bench.sh [chrome|safari|firefox]  (default: all browsers)
 
 RUNS=1
-WAIT_TIME=15
+WAIT_TIME=20  # Firefox needs more startup time
 BROWSER=${1:-all}
 
 # Kill any existing processes
