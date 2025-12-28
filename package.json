@@ -8,9 +8,9 @@
     "serve": "vite preview",
     "format": "prettier --write .",
     "bench:server": "websocat -s 8765 | tee benchmark.log",
-    "bench:chrome": "open -a 'Google Chrome' 'http://localhost:5173/?benchmark'",
-    "bench:firefox": "open -a Firefox 'http://localhost:5173/?benchmark'",
-    "bench:safari": "open -a Safari 'http://localhost:5173/?benchmark'"
+    "bench:chrome": "/Applications/Google\\ Chrome\\ Canary.app/Contents/MacOS/Google\\ Chrome\\ Canary --user-data-dir=/tmp/chrome-bench --no-first-run 'http://localhost:5173/?benchmark'",
+    "bench:firefox": "/Applications/Firefox\\ Nightly.app/Contents/MacOS/firefox -no-remote -profile /tmp/firefox-bench 'http://localhost:5173/?benchmark'",
+    "bench:safari": "open -n -a 'Safari Technology Preview' 'http://localhost:5173/?benchmark'"
   },
   "license": "MIT",
   "devDependencies": {

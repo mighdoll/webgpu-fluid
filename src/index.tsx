@@ -28,17 +28,24 @@ if (new URLSearchParams(window.location.search).has("benchmark")) {
   const ws = new WebSocket("ws://localhost:8765");
   const originalLog = console.log;
   const originalWarn = console.warn;
-  ws.onopen = () => console.log("[WS] Connected to logging server");
+  const browser = /Firefox/.test(navigator.userAgent)
+    ? "Firefox"
+    : /Chrome/.test(navigator.userAgent)
+      ? "Chrome"
+      : /Safari/.test(navigator.userAgent)
+        ? "Safari"
+        : navigator.userAgent;
+  ws.onopen = () => console.log(`[${browser}] Connected`);
   ws.onerror = () => {}; // Silently ignore if server not running
   console.log = (...args) => {
     if (ws.readyState === WebSocket.OPEN) {
-      ws.send(args.map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a))).join(" "));
+      ws.send(`[${browser}] ` + args.map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a))).join(" "));
     }
     originalLog.apply(console, args);
   };
   console.warn = (...args) => {
     if (ws.readyState === WebSocket.OPEN) {
-      ws.send("[WARN] " + args.map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a))).join(" "));
+      ws.send(`[${browser}] [WARN] ` + args.map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a))).join(" "));
     }
     originalWarn.apply(console, args);
   };
