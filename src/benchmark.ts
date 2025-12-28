@@ -43,23 +43,23 @@ export const runBenchmark = async (
     return;
   }
 
-  const WARMUP_PASSES = 5;
-  const MEASURE_PASSES = 20;
-  const ITERATIONS_PER_PASS = 50;
+  const WARMUP_RUNS = 5;
+  const MEASURE_RUNS = 20;
+  const ITERATIONS_PER_RUN = 50;
 
   // Query set for per-iteration timing
-  const querySetPerIter = device.createQuerySet({ type: "timestamp", count: ITERATIONS_PER_PASS * 2 });
+  const querySetPerIter = device.createQuerySet({ type: "timestamp", count: ITERATIONS_PER_RUN * 2 });
   const resolveBufferPerIter = device.createBuffer({
-    size: ITERATIONS_PER_PASS * 2 * 8,
+    size: ITERATIONS_PER_RUN * 2 * 8,
     usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC,
   });
   const resultBufferPerIter = device.createBuffer({
-    size: ITERATIONS_PER_PASS * 2 * 8,
+    size: ITERATIONS_PER_RUN * 2 * 8,
     usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
   });
 
   console.log("Starting Benchmark...");
-  console.log(`Warmup: ${WARMUP_PASSES}, Measure: ${MEASURE_PASSES} passes × ${ITERATIONS_PER_PASS} iterations`);
+  console.log(`Warmup: ${WARMUP_RUNS} runs, Measure: ${MEASURE_RUNS} runs × ${ITERATIONS_PER_RUN} iterations`);
 
   const divergenceReadGroup = device.createBindGroup({
     layout: floatLayout,
@@ -92,9 +92,9 @@ export const runBenchmark = async (
 
   type TimingResult = { perIter: number; wall: number };
 
-  const runComputePass = async (record: boolean): Promise<TimingResult> => {
+  const measureCompute = async (record: boolean): Promise<TimingResult> => {
     const commandEncoder = device.createCommandEncoder();
-    for (let j = 0; j < ITERATIONS_PER_PASS; j++) {
+    for (let j = 0; j < ITERATIONS_PER_RUN; j++) {
       const passEncoder = commandEncoder.beginComputePass(
         record
           ? {
@@ -120,26 +120,26 @@ export const runBenchmark = async (
 
     // Resolve timestamps in separate command buffer
     const resolveEncoder = device.createCommandEncoder();
-    resolveEncoder.resolveQuerySet(querySetPerIter, 0, ITERATIONS_PER_PASS * 2, resolveBufferPerIter, 0);
+    resolveEncoder.resolveQuerySet(querySetPerIter, 0, ITERATIONS_PER_RUN * 2, resolveBufferPerIter, 0);
     resolveEncoder.copyBufferToBuffer(resolveBufferPerIter, 0, resultBufferPerIter, 0, resultBufferPerIter.size);
     device.queue.submit([resolveEncoder.finish()]);
 
     await resultBufferPerIter.mapAsync(GPUMapMode.READ);
     const timesPerIter = new BigUint64Array(resultBufferPerIter.getMappedRange());
     let sumPerIter = 0;
-    for (let j = 0; j < ITERATIONS_PER_PASS; j++) {
+    for (let j = 0; j < ITERATIONS_PER_RUN; j++) {
       sumPerIter += Number(timesPerIter[j * 2 + 1] - timesPerIter[j * 2]);
     }
     // Wall time = from start of first pass to end of last pass
-    const wall = Number(timesPerIter[(ITERATIONS_PER_PASS - 1) * 2 + 1] - timesPerIter[0]);
+    const wall = Number(timesPerIter[(ITERATIONS_PER_RUN - 1) * 2 + 1] - timesPerIter[0]);
     resultBufferPerIter.unmap();
 
-    return { perIter: sumPerIter / ITERATIONS_PER_PASS, wall: wall / ITERATIONS_PER_PASS };
+    return { perIter: sumPerIter / ITERATIONS_PER_RUN, wall: wall / ITERATIONS_PER_RUN };
   };
 
-  const runFragmentPass = async (record: boolean): Promise<TimingResult> => {
+  const measureFragment = async (record: boolean): Promise<TimingResult> => {
     const commandEncoder = device.createCommandEncoder();
-    for (let j = 0; j < ITERATIONS_PER_PASS; j++) {
+    for (let j = 0; j < ITERATIONS_PER_RUN; j++) {
       const passEncoder = commandEncoder.beginRenderPass({
         colorAttachments: [colorAttachment(pressure.write)],
         ...(record && {
@@ -166,27 +166,27 @@ export const runBenchmark = async (
 
     // Resolve timestamps in separate command buffer
     const resolveEncoder = device.createCommandEncoder();
-    resolveEncoder.resolveQuerySet(querySetPerIter, 0, ITERATIONS_PER_PASS * 2, resolveBufferPerIter, 0);
+    resolveEncoder.resolveQuerySet(querySetPerIter, 0, ITERATIONS_PER_RUN * 2, resolveBufferPerIter, 0);
     resolveEncoder.copyBufferToBuffer(resolveBufferPerIter, 0, resultBufferPerIter, 0, resultBufferPerIter.size);
     device.queue.submit([resolveEncoder.finish()]);
 
     await resultBufferPerIter.mapAsync(GPUMapMode.READ);
     const timesPerIter = new BigUint64Array(resultBufferPerIter.getMappedRange());
     let sumPerIter = 0;
-    for (let j = 0; j < ITERATIONS_PER_PASS; j++) {
+    for (let j = 0; j < ITERATIONS_PER_RUN; j++) {
       sumPerIter += Number(timesPerIter[j * 2 + 1] - timesPerIter[j * 2]);
     }
     // Wall time = from start of first pass to end of last pass
-    const wall = Number(timesPerIter[(ITERATIONS_PER_PASS - 1) * 2 + 1] - timesPerIter[0]);
+    const wall = Number(timesPerIter[(ITERATIONS_PER_RUN - 1) * 2 + 1] - timesPerIter[0]);
     resultBufferPerIter.unmap();
 
-    return { perIter: sumPerIter / ITERATIONS_PER_PASS, wall: wall / ITERATIONS_PER_PASS };
+    return { perIter: sumPerIter / ITERATIONS_PER_RUN, wall: wall / ITERATIONS_PER_RUN };
   };
 
   // Warmup - alternate to stabilize GPU clocks
-  for (let i = 0; i < WARMUP_PASSES; i++) {
-    await runComputePass(false);
-    await runFragmentPass(false);
+  for (let i = 0; i < WARMUP_RUNS; i++) {
+    await measureCompute(false);
+    await measureFragment(false);
   }
 
   // Measure - interleaved to avoid thermal bias
@@ -195,20 +195,20 @@ export const runBenchmark = async (
   const fragmentPerIter: number[] = [];
   const fragmentWall: number[] = [];
 
-  for (let i = 0; i < MEASURE_PASSES; i++) {
-    // Alternate order each pass to reduce systematic bias
+  for (let i = 0; i < MEASURE_RUNS; i++) {
+    // Alternate order each run to reduce systematic bias
     if (i % 2 === 0) {
-      const c = await runComputePass(true);
+      const c = await measureCompute(true);
       computePerIter.push(c.perIter);
       computeWall.push(c.wall);
-      const f = await runFragmentPass(true);
+      const f = await measureFragment(true);
       fragmentPerIter.push(f.perIter);
       fragmentWall.push(f.wall);
     } else {
-      const f = await runFragmentPass(true);
+      const f = await measureFragment(true);
       fragmentPerIter.push(f.perIter);
       fragmentWall.push(f.wall);
-      const c = await runComputePass(true);
+      const c = await measureCompute(true);
       computePerIter.push(c.perIter);
       computeWall.push(c.wall);
     }

@@ -166,3 +166,107 @@
 [Firefox] === Overhead (wall - perIter) ===
 [Firefox] Fragment overhead: 119.02 us/iter
 [Firefox] Compute overhead:  178.40 us/iter
+[Firefox] [Firefox] Connected
+[Safari] [Safari] Connected
+[Safari] [Safari] Connected
+[Safari] [Safari] Connected
+[Safari] [Safari] Connected
+[Safari] Starting Benchmark...
+[Safari] Starting Benchmark...
+[Firefox] [Firefox] Connected
+[Safari] [Safari] Connected
+[Safari] [Safari] Connected
+[Safari] Starting Benchmark...
+[Safari] Warmup: 5 runs, Measure: 20 runs × 50 iterations
+[Firefox] Starting Benchmark...
+[Safari] Starting Benchmark...
+[Safari] Warmup: 5 runs, Measure: 20 runs × 50 iterations
+[Firefox] [Firefox] Connected
+[Safari] [Safari] Connected
+[Safari] [Safari] Connected
+[Safari] Starting Benchmark...
+[Safari] Warmup: 5 runs, Measure: 20 runs × 50 iterations
+[Safari] Starting Benchmark...
+[Safari] Warmup: 5 runs, Measure: 20 runs × 50 iterations
+[Firefox] Starting Benchmark...
+[Firefox] Warmup: 5 runs, Measure: 20 runs × 50 iterations
+[Safari] [Safari] Connected
+[Safari] [Safari] Connected
+[Safari] Starting Benchmark...
+[Safari] Warmup: 5 runs, Measure: 20 runs × 50 iterations
+[Firefox] [Firefox] Connected
+[Firefox] Starting Benchmark...
+[Firefox] Warmup: 5 runs, Measure: 20 runs × 50 iterations
+[Safari] [Safari] Connected
+[Safari] [Safari] Connected
+[Safari] Starting Benchmark...
+[Safari] Warmup: 5 runs, Measure: 20 runs × 50 iterations
+[Safari] Starting Benchmark...
+[Safari] Warmup: 5 runs, Measure: 20 runs × 50 iterations
+[Safari] === Per-Iteration Timing (sum of individual pass durations) ===
+[Safari] Fragment: median=21.54 mean=21.67±1.23 us
+[Safari] Compute:  median=7.53 mean=7.61±0.30 us
+[Safari] Speedup: 2.86x
+[Safari] === Wall-Clock Timing (total time ÷ iterations) ===
+[Safari] Fragment: median=47.98 mean=48.88±8.47 us
+[Safari] Compute:  median=43.94 mean=43.71±16.51 us
+[Safari] Speedup: 1.09x
+[Safari] === Overhead (wall - perIter) ===
+[Safari] Fragment overhead: 26.43 us/iter
+[Safari] Compute overhead:  36.40 us/iter
+[Safari] === Per-Iteration Timing (sum of individual pass durations) ===
+[Safari] Fragment: median=25.13 mean=26.34±7.87 us
+[Safari] Compute:  median=8.91 mean=9.34±2.35 us
+[Safari] Speedup: 2.82x
+[Safari] === Wall-Clock Timing (total time ÷ iterations) ===
+[Safari] Fragment: median=56.11 mean=57.31±12.81 us
+[Safari] Compute:  median=65.66 mean=67.50±29.32 us
+[Safari] Speedup: 0.85x
+[Safari] === Overhead (wall - perIter) ===
+[Safari] Fragment overhead: 30.98 us/iter
+[Safari] Compute overhead:  56.75 us/iter
+[Firefox] [Firefox] Connected
+[Firefox] Starting Benchmark...
+[Firefox] Warmup: 5 runs, Measure: 20 runs × 50 iterations
+[Safari] [Safari] Connected
+[Safari] [Safari] Connected
+[Safari] Starting Benchmark...
+[Safari] Warmup: 5 runs, Measure: 20 runs × 50 iterations
+[Safari] Starting Benchmark...
+[Safari] Warmup: 5 runs, Measure: 20 runs × 50 iterations
+[Safari] === Per-Iteration Timing (sum of individual pass durations) ===
+[Safari] Fragment: median=23.19 mean=23.16±2.52 us
+[Safari] Compute:  median=7.56 mean=7.68±0.47 us
+[Safari] Speedup: 3.07x
+[Safari] === Wall-Clock Timing (total time ÷ iterations) ===
+[Safari] Fragment: median=59.78 mean=56.98±12.21 us
+[Safari] Compute:  median=36.66 mean=42.26±21.84 us
+[Safari] Speedup: 1.63x
+[Safari] === Overhead (wall - perIter) ===
+[Safari] Fragment overhead: 36.60 us/iter
+[Safari] Compute overhead:  29.10 us/iter
+[Safari] === Per-Iteration Timing (sum of individual pass durations) ===
+[Safari] Fragment: median=23.27 mean=22.81±1.83 us
+[Safari] Compute:  median=7.77 mean=7.89±0.73 us
+[Safari] Speedup: 2.99x
+[Safari] === Wall-Clock Timing (total time ÷ iterations) ===
+[Safari] Fragment: median=49.66 mean=53.74±12.41 us
+[Safari] Compute:  median=49.65 mean=47.05±14.68 us
+[Safari] Speedup: 1.00x
+[Safari] === Overhead (wall - perIter) ===
+[Safari] Fragment overhead: 26.39 us/iter
+[Safari] Compute overhead:  41.87 us/iter
+[Firefox] [Firefox] Connected
+[Firefox] Starting Benchmark...
+[Firefox] Warmup: 5 runs, Measure: 20 runs × 50 iterations
+[Firefox] === Per-Iteration Timing (sum of individual pass durations) ===
+[Firefox] Fragment: median=46.49 mean=57.33±40.56 us
+[Firefox] Compute:  median=19.66 mean=19.40±1.99 us
+[Firefox] Speedup: 2.37x
+[Firefox] === Wall-Clock Timing (total time ÷ iterations) ===
+[Firefox] Fragment: median=172.90 mean=181.56±61.99 us
+[Firefox] Compute:  median=148.87 mean=150.27±51.69 us
+[Firefox] Speedup: 1.16x
+[Firefox] === Overhead (wall - perIter) ===
+[Firefox] Fragment overhead: 126.41 us/iter
+[Firefox] Compute overhead:  129.21 us/iter
