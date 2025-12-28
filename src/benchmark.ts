@@ -95,8 +95,6 @@ export const runBenchmark = async (
   const runComputePass = async (record: boolean): Promise<TimingResult> => {
     const commandEncoder = device.createCommandEncoder();
     for (let j = 0; j < ITERATIONS_PER_PASS; j++) {
-      const isFirst = j === 0;
-      const isLast = j === ITERATIONS_PER_PASS - 1;
       const passEncoder = commandEncoder.beginComputePass(
         record
           ? {
@@ -113,13 +111,18 @@ export const runBenchmark = async (
       passEncoder.dispatchWorkgroups(wgX, wgY);
       passEncoder.end();
     }
-    if (record) {
-      commandEncoder.resolveQuerySet(querySetPerIter, 0, ITERATIONS_PER_PASS * 2, resolveBufferPerIter, 0);
-      commandEncoder.copyBufferToBuffer(resolveBufferPerIter, 0, resultBufferPerIter, 0, resultBufferPerIter.size);
-    }
     device.queue.submit([commandEncoder.finish()]);
 
     if (!record) return { perIter: 0, wall: 0 };
+
+    // Wait for GPU work to complete before resolving timestamps
+    await device.queue.onSubmittedWorkDone();
+
+    // Resolve timestamps in separate command buffer
+    const resolveEncoder = device.createCommandEncoder();
+    resolveEncoder.resolveQuerySet(querySetPerIter, 0, ITERATIONS_PER_PASS * 2, resolveBufferPerIter, 0);
+    resolveEncoder.copyBufferToBuffer(resolveBufferPerIter, 0, resultBufferPerIter, 0, resultBufferPerIter.size);
+    device.queue.submit([resolveEncoder.finish()]);
 
     await resultBufferPerIter.mapAsync(GPUMapMode.READ);
     const timesPerIter = new BigUint64Array(resultBufferPerIter.getMappedRange());
@@ -154,13 +157,18 @@ export const runBenchmark = async (
       passEncoder.end();
       pressure.swap();
     }
-    if (record) {
-      commandEncoder.resolveQuerySet(querySetPerIter, 0, ITERATIONS_PER_PASS * 2, resolveBufferPerIter, 0);
-      commandEncoder.copyBufferToBuffer(resolveBufferPerIter, 0, resultBufferPerIter, 0, resultBufferPerIter.size);
-    }
     device.queue.submit([commandEncoder.finish()]);
 
     if (!record) return { perIter: 0, wall: 0 };
+
+    // Wait for GPU work to complete before resolving timestamps
+    await device.queue.onSubmittedWorkDone();
+
+    // Resolve timestamps in separate command buffer
+    const resolveEncoder = device.createCommandEncoder();
+    resolveEncoder.resolveQuerySet(querySetPerIter, 0, ITERATIONS_PER_PASS * 2, resolveBufferPerIter, 0);
+    resolveEncoder.copyBufferToBuffer(resolveBufferPerIter, 0, resultBufferPerIter, 0, resultBufferPerIter.size);
+    device.queue.submit([resolveEncoder.finish()]);
 
     await resultBufferPerIter.mapAsync(GPUMapMode.READ);
     const timesPerIter = new BigUint64Array(resultBufferPerIter.getMappedRange());

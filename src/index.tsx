@@ -490,7 +490,7 @@ const GPUProgram: GPUProgram = ({ width, height, context, device }) => {
 };
 
 const App = () => {
-  const [width, setWidth] = createSignal(1710);
+  const [width, setWidth] = createSignal(1124);
   const [height, setHeight] = createSignal(854);
 
   let c!: HTMLCanvasElement;
