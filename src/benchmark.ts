@@ -91,25 +91,16 @@ export const runBenchmark = async (
   const wgY = Math.ceil(dheight() / 8);
 
   type TimingResult = { perIter: number; wall: number };
+  type TimestampWrites = { querySet: GPUQuerySet; beginningOfPassWriteIndex: number; endOfPassWriteIndex: number };
+  type WorkEncoder = (encoder: GPUCommandEncoder, iteration: number, timestamps?: TimestampWrites) => void;
 
-  const measureCompute = async (record: boolean): Promise<TimingResult> => {
+  const measure = async (record: boolean, encodeWork: WorkEncoder): Promise<TimingResult> => {
     const commandEncoder = device.createCommandEncoder();
     for (let j = 0; j < ITERATIONS_PER_RUN; j++) {
-      const passEncoder = commandEncoder.beginComputePass(
-        record
-          ? {
-              timestampWrites: {
-                querySet: querySetPerIter,
-                beginningOfPassWriteIndex: j * 2,
-                endOfPassWriteIndex: j * 2 + 1,
-              },
-            }
-          : undefined,
-      );
-      passEncoder.setPipeline(jacobiComputePipeline);
-      passEncoder.setBindGroup(0, computeBindGroups[j % 2]);
-      passEncoder.dispatchWorkgroups(wgX, wgY);
-      passEncoder.end();
+      const timestamps = record
+        ? { querySet: querySetPerIter, beginningOfPassWriteIndex: j * 2, endOfPassWriteIndex: j * 2 + 1 }
+        : undefined;
+      encodeWork(commandEncoder, j, timestamps);
     }
     device.queue.submit([commandEncoder.finish()]);
 
@@ -137,51 +128,29 @@ export const runBenchmark = async (
     return { perIter: sumPerIter / ITERATIONS_PER_RUN, wall: wall / ITERATIONS_PER_RUN };
   };
 
-  const measureFragment = async (record: boolean): Promise<TimingResult> => {
-    const commandEncoder = device.createCommandEncoder();
-    for (let j = 0; j < ITERATIONS_PER_RUN; j++) {
-      const passEncoder = commandEncoder.beginRenderPass({
-        colorAttachments: [colorAttachment(pressure.write)],
-        ...(record && {
-          timestampWrites: {
-            querySet: querySetPerIter,
-            beginningOfPassWriteIndex: j * 2,
-            endOfPassWriteIndex: j * 2 + 1,
-          },
-        }),
-      });
-      passEncoder.setPipeline(jacobiPipeline);
-      passEncoder.setBindGroup(0, divergenceReadGroup);
-      passEncoder.setBindGroup(1, pressurePair.read());
-      passEncoder.draw(4, 1, 0, 0);
-      passEncoder.end();
-      pressure.swap();
-    }
-    device.queue.submit([commandEncoder.finish()]);
-
-    if (!record) return { perIter: 0, wall: 0 };
-
-    // Wait for GPU work to complete before resolving timestamps
-    await device.queue.onSubmittedWorkDone();
-
-    // Resolve timestamps in separate command buffer
-    const resolveEncoder = device.createCommandEncoder();
-    resolveEncoder.resolveQuerySet(querySetPerIter, 0, ITERATIONS_PER_RUN * 2, resolveBufferPerIter, 0);
-    resolveEncoder.copyBufferToBuffer(resolveBufferPerIter, 0, resultBufferPerIter, 0, resultBufferPerIter.size);
-    device.queue.submit([resolveEncoder.finish()]);
-
-    await resultBufferPerIter.mapAsync(GPUMapMode.READ);
-    const timesPerIter = new BigUint64Array(resultBufferPerIter.getMappedRange());
-    let sumPerIter = 0;
-    for (let j = 0; j < ITERATIONS_PER_RUN; j++) {
-      sumPerIter += Number(timesPerIter[j * 2 + 1] - timesPerIter[j * 2]);
-    }
-    // Wall time = from start of first pass to end of last pass
-    const wall = Number(timesPerIter[(ITERATIONS_PER_RUN - 1) * 2 + 1] - timesPerIter[0]);
-    resultBufferPerIter.unmap();
-
-    return { perIter: sumPerIter / ITERATIONS_PER_RUN, wall: wall / ITERATIONS_PER_RUN };
+  const encodeCompute: WorkEncoder = (encoder, j, timestamps) => {
+    const pass = encoder.beginComputePass(timestamps ? { timestampWrites: timestamps } : undefined);
+    pass.setPipeline(jacobiComputePipeline);
+    pass.setBindGroup(0, computeBindGroups[j % 2]);
+    pass.dispatchWorkgroups(wgX, wgY);
+    pass.end();
   };
+
+  const encodeFragment: WorkEncoder = (encoder, j, timestamps) => {
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [colorAttachment(pressure.write)],
+      ...(timestamps && { timestampWrites: timestamps }),
+    });
+    pass.setPipeline(jacobiPipeline);
+    pass.setBindGroup(0, divergenceReadGroup);
+    pass.setBindGroup(1, pressurePair.read());
+    pass.draw(4, 1, 0, 0);
+    pass.end();
+    pressure.swap();
+  };
+
+  const measureCompute = (record: boolean) => measure(record, encodeCompute);
+  const measureFragment = (record: boolean) => measure(record, encodeFragment);
 
   // Warmup - alternate to stabilize GPU clocks
   for (let i = 0; i < WARMUP_RUNS; i++) {
@@ -196,22 +165,12 @@ export const runBenchmark = async (
   const fragmentWall: number[] = [];
 
   for (let i = 0; i < MEASURE_RUNS; i++) {
-    // Alternate order each run to reduce systematic bias
-    if (i % 2 === 0) {
-      const c = await measureCompute(true);
-      computePerIter.push(c.perIter);
-      computeWall.push(c.wall);
-      const f = await measureFragment(true);
-      fragmentPerIter.push(f.perIter);
-      fragmentWall.push(f.wall);
-    } else {
-      const f = await measureFragment(true);
-      fragmentPerIter.push(f.perIter);
-      fragmentWall.push(f.wall);
-      const c = await measureCompute(true);
-      computePerIter.push(c.perIter);
-      computeWall.push(c.wall);
-    }
+    const c = await measureCompute(true);
+    computePerIter.push(c.perIter);
+    computeWall.push(c.wall);
+    const f = await measureFragment(true);
+    fragmentPerIter.push(f.perIter);
+    fragmentWall.push(f.wall);
   }
 
   const computePerIterStats = stats(computePerIter);
