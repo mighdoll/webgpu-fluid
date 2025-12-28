@@ -43,9 +43,9 @@ export const runBenchmark = async (
     return;
   }
 
-  const WARMUP_RUNS = 15;
-  const MEASURE_RUNS = 50;
-  const ITERATIONS_PER_RUN = 150;
+  const WARMUP_RUNS = 5;
+  const MEASURE_RUNS = 20;
+  const ITERATIONS_PER_RUN = 50;
 
   // Query set for per-iteration timing
   const querySetPerIter = device.createQuerySet({ type: "timestamp", count: ITERATIONS_PER_RUN * 2 });
