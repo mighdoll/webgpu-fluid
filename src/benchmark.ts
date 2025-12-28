@@ -114,6 +114,7 @@ export const runBenchmark = async (
     resolveEncoder.resolveQuerySet(querySetPerIter, 0, ITERATIONS_PER_RUN * 2, resolveBufferPerIter, 0);
     resolveEncoder.copyBufferToBuffer(resolveBufferPerIter, 0, resultBufferPerIter, 0, resultBufferPerIter.size);
     device.queue.submit([resolveEncoder.finish()]);
+    await device.queue.onSubmittedWorkDone();
 
     await resultBufferPerIter.mapAsync(GPUMapMode.READ);
     const timesPerIter = new BigUint64Array(resultBufferPerIter.getMappedRange());
