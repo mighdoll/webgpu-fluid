@@ -7,6 +7,7 @@
     "build": "vite build",
     "serve": "vite preview",
     "format": "prettier --write .",
+    "bench": "./bench.sh",
     "bench:server": "websocat -s 8765 | tee benchmark.log",
     "bench:chrome": "timeout 20 /Applications/Google\\ Chrome\\ Canary.app/Contents/MacOS/Google\\ Chrome\\ Canary --user-data-dir=/tmp/chrome-bench --no-first-run 'http://localhost:5173/?benchmark' || true",
     "bench:firefox": "timeout 20 /Applications/Firefox\\ Nightly.app/Contents/MacOS/firefox -no-remote -profile /tmp/firefox-bench 'http://localhost:5173/?benchmark' || true",
