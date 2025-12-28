@@ -25,19 +25,24 @@ export const runBenchmark = async (device: GPUDevice, width: number, height: num
   const MEASURE_RUNS = 20;
   const ITERATIONS_PER_RUN = 50;
 
-  // Minimal: two ping-pong textures
-  const texA = device.createTexture({
+  // Three textures: divergence (input), pressure (input), new_pressure (output)
+  const divergenceTex = device.createTexture({
     size: [width, height],
     format: "r32float",
-    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
+    usage: GPUTextureUsage.TEXTURE_BINDING,
   });
-  const texB = device.createTexture({
+  const pressureTex = device.createTexture({
+    size: [width, height],
+    format: "r32float",
+    usage: GPUTextureUsage.TEXTURE_BINDING,
+  });
+  const outputTex = device.createTexture({
     size: [width, height],
     format: "r32float",
     usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
   });
 
-  // Fragment pipeline - using layout: "auto"
+  // Fragment pipeline - using layout: "auto" (will have TWO bind groups)
   const fragModule = device.createShaderModule({ code: benchFragWGSL });
   const vertModule = device.createShaderModule({ code: vertWGSL });
   const fragPipeline = device.createRenderPipeline({
@@ -50,36 +55,30 @@ export const runBenchmark = async (device: GPUDevice, width: number, height: num
     },
   });
 
-  // Compute pipeline - using layout: "auto"
+  // Compute pipeline - using layout: "auto" (will have ONE bind group with 3 bindings)
   const computeModule = device.createShaderModule({ code: benchComputeWGSL });
   const computePipeline = device.createComputePipeline({
     layout: "auto",
     compute: { module: computeModule, entryPoint: "main" },
   });
 
-  // Fragment bind groups
-  const fragBindA = device.createBindGroup({
+  // Fragment bind groups: TWO groups (group 0: divergence, group 1: pressure)
+  const fragBindGroup0 = device.createBindGroup({
     layout: fragPipeline.getBindGroupLayout(0),
-    entries: [{ binding: 0, resource: texA.createView() }],
+    entries: [{ binding: 0, resource: divergenceTex.createView() }],
   });
-  const fragBindB = device.createBindGroup({
-    layout: fragPipeline.getBindGroupLayout(0),
-    entries: [{ binding: 0, resource: texB.createView() }],
+  const fragBindGroup1 = device.createBindGroup({
+    layout: fragPipeline.getBindGroupLayout(1),
+    entries: [{ binding: 0, resource: pressureTex.createView() }],
   });
 
-  // Compute bind groups
-  const computeBindA = device.createBindGroup({
+  // Compute bind group: ONE group with 3 bindings
+  const computeBind = device.createBindGroup({
     layout: computePipeline.getBindGroupLayout(0),
     entries: [
-      { binding: 0, resource: texA.createView() },
-      { binding: 1, resource: texB.createView() },
-    ],
-  });
-  const computeBindB = device.createBindGroup({
-    layout: computePipeline.getBindGroupLayout(0),
-    entries: [
-      { binding: 0, resource: texB.createView() },
-      { binding: 1, resource: texA.createView() },
+      { binding: 0, resource: divergenceTex.createView() },
+      { binding: 1, resource: pressureTex.createView() },
+      { binding: 2, resource: outputTex.createView() },
     ],
   });
 
@@ -133,21 +132,24 @@ export const runBenchmark = async (device: GPUDevice, width: number, height: num
     return { perIter: sum / ITERATIONS_PER_RUN, wall: wall / ITERATIONS_PER_RUN };
   };
 
-  const encodeCompute = (enc: GPUCommandEncoder, j: number, ts?: { querySet: GPUQuerySet; beginningOfPassWriteIndex: number; endOfPassWriteIndex: number }) => {
+  type TS = { querySet: GPUQuerySet; beginningOfPassWriteIndex: number; endOfPassWriteIndex: number };
+
+  const encodeCompute = (enc: GPUCommandEncoder, _: number, ts?: TS) => {
     const pass = enc.beginComputePass(ts ? { timestampWrites: ts } : undefined);
     pass.setPipeline(computePipeline);
-    pass.setBindGroup(0, computeBindA);  // No ping-pong
+    pass.setBindGroup(0, computeBind);
     pass.dispatchWorkgroups(wgX, wgY);
     pass.end();
   };
 
-  const encodeFragment = (enc: GPUCommandEncoder, j: number, ts?: { querySet: GPUQuerySet; beginningOfPassWriteIndex: number; endOfPassWriteIndex: number }) => {
+  const encodeFragment = (enc: GPUCommandEncoder, _: number, ts?: TS) => {
     const pass = enc.beginRenderPass({
-      colorAttachments: [{ view: texB.createView(), loadOp: "load", storeOp: "store" }],  // No ping-pong
+      colorAttachments: [{ view: outputTex.createView(), loadOp: "load", storeOp: "store" }],
       ...(ts && { timestampWrites: ts }),
     });
     pass.setPipeline(fragPipeline);
-    pass.setBindGroup(0, fragBindA);  // No ping-pong
+    pass.setBindGroup(0, fragBindGroup0);  // divergence
+    pass.setBindGroup(1, fragBindGroup1);  // pressure
     pass.draw(4);
     pass.end();
   };
@@ -195,6 +197,7 @@ export const runBenchmark = async (device: GPUDevice, width: number, height: num
   querySet.destroy();
   resolveBuffer.destroy();
   resultBuffer.destroy();
-  texA.destroy();
-  texB.destroy();
+  divergenceTex.destroy();
+  pressureTex.destroy();
+  outputTex.destroy();
 };
