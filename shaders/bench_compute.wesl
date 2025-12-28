@@ -1,3 +1,4 @@
+// Minimal: single texture read, single texture write
 @group(0) @binding(0) var input : texture_2d<f32>;
 @group(0) @binding(1) var output : texture_storage_2d<r32float, write>;
 

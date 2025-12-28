@@ -25,7 +25,7 @@ export const runBenchmark = async (device: GPUDevice, width: number, height: num
   const MEASURE_RUNS = 20;
   const ITERATIONS_PER_RUN = 50;
 
-  // Create simple textures for benchmark
+  // Minimal: two ping-pong textures
   const texA = device.createTexture({
     size: [width, height],
     format: "r32float",
@@ -37,12 +37,12 @@ export const runBenchmark = async (device: GPUDevice, width: number, height: num
     usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
   });
 
-  // Fragment pipeline
+  // Fragment pipeline - using layout: "auto"
   const fragModule = device.createShaderModule({ code: benchFragWGSL });
   const vertModule = device.createShaderModule({ code: vertWGSL });
   const fragPipeline = device.createRenderPipeline({
     layout: "auto",
-    vertex: { module: vertModule, entryPoint: "fullscreen" },
+    vertex: { module: vertModule, entryPoint: "vert" },
     fragment: {
       module: fragModule,
       entryPoint: "main",
@@ -50,14 +50,14 @@ export const runBenchmark = async (device: GPUDevice, width: number, height: num
     },
   });
 
-  // Compute pipeline
+  // Compute pipeline - using layout: "auto"
   const computeModule = device.createShaderModule({ code: benchComputeWGSL });
   const computePipeline = device.createComputePipeline({
     layout: "auto",
     compute: { module: computeModule, entryPoint: "main" },
   });
 
-  // Bind groups for ping-pong
+  // Fragment bind groups
   const fragBindA = device.createBindGroup({
     layout: fragPipeline.getBindGroupLayout(0),
     entries: [{ binding: 0, resource: texA.createView() }],
@@ -66,6 +66,8 @@ export const runBenchmark = async (device: GPUDevice, width: number, height: num
     layout: fragPipeline.getBindGroupLayout(0),
     entries: [{ binding: 0, resource: texB.createView() }],
   });
+
+  // Compute bind groups
   const computeBindA = device.createBindGroup({
     layout: computePipeline.getBindGroupLayout(0),
     entries: [
@@ -140,13 +142,15 @@ export const runBenchmark = async (device: GPUDevice, width: number, height: num
   };
 
   const encodeFragment = (enc: GPUCommandEncoder, j: number, ts?: { querySet: GPUQuerySet; beginningOfPassWriteIndex: number; endOfPassWriteIndex: number }) => {
+    // Ping-pong: read from one, write to other
     const target = j % 2 === 0 ? texB : texA;
+    const fragBind = j % 2 === 0 ? fragBindA : fragBindB;
     const pass = enc.beginRenderPass({
       colorAttachments: [{ view: target.createView(), loadOp: "load", storeOp: "store" }],
       ...(ts && { timestampWrites: ts }),
     });
     pass.setPipeline(fragPipeline);
-    pass.setBindGroup(0, j % 2 === 0 ? fragBindA : fragBindB);
+    pass.setBindGroup(0, fragBind);
     pass.draw(4);
     pass.end();
   };
