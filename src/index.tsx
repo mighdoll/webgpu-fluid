@@ -22,6 +22,28 @@ import splatWGSL from "../shaders/splat.wesl?static";
 import { makeEventListener } from "@solid-primitives/event-listener";
 import "./index.css";
 
+// WebSocket console forwarding for external monitoring (e.g., Safari testing)
+// Start server: websocat -s 8765 | tee benchmark.log
+if (new URLSearchParams(window.location.search).has("benchmark")) {
+  const ws = new WebSocket("ws://localhost:8765");
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  ws.onopen = () => console.log("[WS] Connected to logging server");
+  ws.onerror = () => {}; // Silently ignore if server not running
+  console.log = (...args) => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(args.map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a))).join(" "));
+    }
+    originalLog.apply(console, args);
+  };
+  console.warn = (...args) => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send("[WARN] " + args.map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a))).join(" "));
+    }
+    originalWarn.apply(console, args);
+  };
+}
+
 const mapObject =
   <U, F extends (key: string, value: U) => any>(fn: F) =>
   <T extends Record<string, U>>(obj: T) =>
@@ -461,12 +483,8 @@ const GPUProgram: GPUProgram = ({ width, height, context, device }) => {
 };
 
 const App = () => {
-  const [width, setWidth] = createSignal(window.innerWidth);
-  const [height, setHeight] = createSignal(window.innerHeight);
-  makeEventListener(window, "resize", () => {
-    setWidth(window.innerWidth);
-    setHeight(window.innerHeight);
-  });
+  const [width, setWidth] = createSignal(1710);
+  const [height, setHeight] = createSignal(854);
 
   let c!: HTMLCanvasElement;
 
