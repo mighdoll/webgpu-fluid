@@ -136,21 +136,18 @@ export const runBenchmark = async (device: GPUDevice, width: number, height: num
   const encodeCompute = (enc: GPUCommandEncoder, j: number, ts?: { querySet: GPUQuerySet; beginningOfPassWriteIndex: number; endOfPassWriteIndex: number }) => {
     const pass = enc.beginComputePass(ts ? { timestampWrites: ts } : undefined);
     pass.setPipeline(computePipeline);
-    pass.setBindGroup(0, j % 2 === 0 ? computeBindA : computeBindB);
+    pass.setBindGroup(0, computeBindA);  // No ping-pong
     pass.dispatchWorkgroups(wgX, wgY);
     pass.end();
   };
 
   const encodeFragment = (enc: GPUCommandEncoder, j: number, ts?: { querySet: GPUQuerySet; beginningOfPassWriteIndex: number; endOfPassWriteIndex: number }) => {
-    // Ping-pong: read from one, write to other
-    const target = j % 2 === 0 ? texB : texA;
-    const fragBind = j % 2 === 0 ? fragBindA : fragBindB;
     const pass = enc.beginRenderPass({
-      colorAttachments: [{ view: target.createView(), loadOp: "load", storeOp: "store" }],
+      colorAttachments: [{ view: texB.createView(), loadOp: "load", storeOp: "store" }],  // No ping-pong
       ...(ts && { timestampWrites: ts }),
     });
     pass.setPipeline(fragPipeline);
-    pass.setBindGroup(0, fragBind);
+    pass.setBindGroup(0, fragBindA);  // No ping-pong
     pass.draw(4);
     pass.end();
   };
