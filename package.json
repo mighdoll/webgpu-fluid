@@ -8,9 +8,9 @@
     "serve": "vite preview",
     "format": "prettier --write .",
     "bench:server": "websocat -s 8765 | tee benchmark.log",
-    "bench:chrome": "timeout 15 /Applications/Google\\ Chrome\\ Canary.app/Contents/MacOS/Google\\ Chrome\\ Canary --user-data-dir=/tmp/chrome-bench --no-first-run 'http://localhost:5173/?benchmark' || true",
-    "bench:firefox": "timeout 15 /Applications/Firefox\\ Nightly.app/Contents/MacOS/firefox -no-remote -profile /tmp/firefox-bench 'http://localhost:5173/?benchmark' || true",
-    "bench:safari": "timeout 15 open -n -a 'Safari Technology Preview' --wait-apps 'http://localhost:5173/?benchmark' || true"
+    "bench:chrome": "timeout 20 /Applications/Google\\ Chrome\\ Canary.app/Contents/MacOS/Google\\ Chrome\\ Canary --user-data-dir=/tmp/chrome-bench --no-first-run 'http://localhost:5173/?benchmark' || true",
+    "bench:firefox": "timeout 20 /Applications/Firefox\\ Nightly.app/Contents/MacOS/firefox -no-remote -profile /tmp/firefox-bench 'http://localhost:5173/?benchmark' || true",
+    "bench:safari": "timeout 20 open -n -a 'Safari Technology Preview' --wait-apps 'http://localhost:5173/?benchmark' || true"
   },
   "license": "MIT",
   "devDependencies": {
