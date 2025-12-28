@@ -435,23 +435,29 @@ const GPUProgram: GPUProgram = ({ width, height, context, device }) => {
   onMount(frame);
   onCleanup(() => cancelAnimationFrame(animation));
 
+  const doBenchmark = () =>
+    runBenchmark(
+      device,
+      pipelines.jacobi,
+      jacobiComputePipeline,
+      layouts.float,
+      computeLayout,
+      divergenceTex,
+      pressure,
+      pressurePair,
+      dwidth,
+      dheight,
+      colorAttachment,
+    );
+
   makeEventListener(window, "keydown", (e) => {
-    if (e.key === "b") {
-      runBenchmark(
-        device,
-        pipelines.jacobi,
-        jacobiComputePipeline,
-        layouts.float,
-        computeLayout,
-        divergenceTex,
-        pressure,
-        pressurePair,
-        dwidth,
-        dheight,
-        colorAttachment,
-      );
-    }
+    if (e.key === "b") doBenchmark();
   });
+
+  // Auto-run benchmark if ?benchmark is in URL
+  if (new URLSearchParams(window.location.search).has("benchmark")) {
+    setTimeout(doBenchmark, 500);
+  }
 };
 
 const App = () => {
