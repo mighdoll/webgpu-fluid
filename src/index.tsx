@@ -464,20 +464,7 @@ const GPUProgram: GPUProgram = ({ width, height, context, device }) => {
   onMount(frame);
   onCleanup(() => cancelAnimationFrame(animation));
 
-  const doBenchmark = () =>
-    runBenchmark(
-      device,
-      pipelines.jacobi,
-      jacobiComputePipeline,
-      layouts.float,
-      computeLayout,
-      divergenceTex,
-      pressure,
-      pressurePair,
-      dwidth,
-      dheight,
-      colorAttachment,
-    );
+  const doBenchmark = () => runBenchmark(device, dwidth(), dheight());
 
   makeEventListener(window, "keydown", (e) => {
     if (e.key === "b") doBenchmark();

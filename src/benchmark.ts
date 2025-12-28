@@ -1,14 +1,6 @@
-import type { Accessor } from "solid-js";
-
-interface Swappable {
-  read: GPUTexture;
-  write: GPUTexture;
-  swap: () => void;
-}
-
-interface BindPair {
-  read: () => GPUBindGroup;
-}
+import benchFragWGSL from "../shaders/bench_frag.wesl?static";
+import benchComputeWGSL from "../shaders/bench_compute.wesl?static";
+import vertWGSL from "../shaders/vert.wesl?static";
 
 const stats = (times: number[]) => {
   const sorted = [...times].sort((a, b) => a - b);
@@ -17,28 +9,14 @@ const stats = (times: number[]) => {
   const median = sorted[Math.floor(n * 0.5)];
   const q3 = sorted[Math.floor(n * 0.75)];
   const iqr = q3 - q1;
-  // Filter outliers (outside 1.5*IQR)
   const filtered = sorted.filter((t) => t >= q1 - 1.5 * iqr && t <= q3 + 1.5 * iqr);
   const mean = filtered.reduce((a, b) => a + b, 0) / filtered.length;
   const stddev = Math.sqrt(filtered.reduce((sum, t) => sum + (t - mean) ** 2, 0) / filtered.length);
-  return { median, mean, stddev, min: sorted[0], max: sorted[n - 1], q1, q3, filtered };
+  return { median, mean, stddev, min: sorted[0], max: sorted[n - 1] };
 };
 
-export const runBenchmark = async (
-  device: GPUDevice,
-  jacobiPipeline: GPURenderPipeline,
-  jacobiComputePipeline: GPUComputePipeline,
-  floatLayout: GPUBindGroupLayout,
-  computeLayout: GPUBindGroupLayout,
-  divergenceTex: Accessor<GPUTexture>,
-  pressure: Swappable,
-  pressurePair: BindPair,
-  dwidth: () => number,
-  dheight: () => number,
-  colorAttachment: (view: GPUTexture) => GPURenderPassColorAttachment,
-): Promise<void> => {
-  const canTimestamp = device.features.has("timestamp-query");
-  if (!canTimestamp) {
+export const runBenchmark = async (device: GPUDevice, width: number, height: number): Promise<void> => {
+  if (!device.features.has("timestamp-query")) {
     console.warn("Timestamp queries not supported.");
     return;
   }
@@ -47,13 +25,69 @@ export const runBenchmark = async (
   const MEASURE_RUNS = 20;
   const ITERATIONS_PER_RUN = 50;
 
-  // Query set for per-iteration timing
-  const querySetPerIter = device.createQuerySet({ type: "timestamp", count: ITERATIONS_PER_RUN * 2 });
-  const resolveBufferPerIter = device.createBuffer({
+  // Create simple textures for benchmark
+  const texA = device.createTexture({
+    size: [width, height],
+    format: "r32float",
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+  const texB = device.createTexture({
+    size: [width, height],
+    format: "r32float",
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+
+  // Fragment pipeline
+  const fragModule = device.createShaderModule({ code: benchFragWGSL });
+  const vertModule = device.createShaderModule({ code: vertWGSL });
+  const fragPipeline = device.createRenderPipeline({
+    layout: "auto",
+    vertex: { module: vertModule, entryPoint: "fullscreen" },
+    fragment: {
+      module: fragModule,
+      entryPoint: "main",
+      targets: [{ format: "r32float" }],
+    },
+  });
+
+  // Compute pipeline
+  const computeModule = device.createShaderModule({ code: benchComputeWGSL });
+  const computePipeline = device.createComputePipeline({
+    layout: "auto",
+    compute: { module: computeModule, entryPoint: "main" },
+  });
+
+  // Bind groups for ping-pong
+  const fragBindA = device.createBindGroup({
+    layout: fragPipeline.getBindGroupLayout(0),
+    entries: [{ binding: 0, resource: texA.createView() }],
+  });
+  const fragBindB = device.createBindGroup({
+    layout: fragPipeline.getBindGroupLayout(0),
+    entries: [{ binding: 0, resource: texB.createView() }],
+  });
+  const computeBindA = device.createBindGroup({
+    layout: computePipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: texA.createView() },
+      { binding: 1, resource: texB.createView() },
+    ],
+  });
+  const computeBindB = device.createBindGroup({
+    layout: computePipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: texB.createView() },
+      { binding: 1, resource: texA.createView() },
+    ],
+  });
+
+  // Timing resources
+  const querySet = device.createQuerySet({ type: "timestamp", count: ITERATIONS_PER_RUN * 2 });
+  const resolveBuffer = device.createBuffer({
     size: ITERATIONS_PER_RUN * 2 * 8,
     usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC,
   });
-  const resultBufferPerIter = device.createBuffer({
+  const resultBuffer = device.createBuffer({
     size: ITERATIONS_PER_RUN * 2 * 8,
     usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
   });
@@ -61,144 +95,105 @@ export const runBenchmark = async (
   console.log("Starting Benchmark...");
   console.log(`Warmup: ${WARMUP_RUNS} runs, Measure: ${MEASURE_RUNS} runs × ${ITERATIONS_PER_RUN} iterations`);
 
-  const divergenceReadGroup = device.createBindGroup({
-    layout: floatLayout,
-    label: "divergence read bind group",
-    entries: [{ binding: 0, resource: divergenceTex().createView() }],
-  });
-
-  // Pre-create compute bind groups (alternating for ping-pong)
-  const computeBindGroups = [
-    device.createBindGroup({
-      layout: computeLayout,
-      entries: [
-        { binding: 0, resource: divergenceTex().createView() },
-        { binding: 1, resource: pressure.read.createView() },
-        { binding: 2, resource: pressure.write.createView() },
-      ],
-    }),
-    device.createBindGroup({
-      layout: computeLayout,
-      entries: [
-        { binding: 0, resource: divergenceTex().createView() },
-        { binding: 1, resource: pressure.write.createView() },
-        { binding: 2, resource: pressure.read.createView() },
-      ],
-    }),
-  ];
-
-  const wgX = Math.ceil(dwidth() / 8);
-  const wgY = Math.ceil(dheight() / 8);
+  const wgX = Math.ceil(width / 8);
+  const wgY = Math.ceil(height / 8);
 
   type TimingResult = { perIter: number; wall: number };
-  type TimestampWrites = { querySet: GPUQuerySet; beginningOfPassWriteIndex: number; endOfPassWriteIndex: number };
-  type WorkEncoder = (encoder: GPUCommandEncoder, iteration: number, timestamps?: TimestampWrites) => void;
 
-  const measure = async (record: boolean, encodeWork: WorkEncoder): Promise<TimingResult> => {
-    const commandEncoder = device.createCommandEncoder();
+  const measure = async (
+    record: boolean,
+    encodeWork: (enc: GPUCommandEncoder, i: number, ts?: { querySet: GPUQuerySet; beginningOfPassWriteIndex: number; endOfPassWriteIndex: number }) => void,
+  ): Promise<TimingResult> => {
+    const encoder = device.createCommandEncoder();
     for (let j = 0; j < ITERATIONS_PER_RUN; j++) {
-      const timestamps = record
-        ? { querySet: querySetPerIter, beginningOfPassWriteIndex: j * 2, endOfPassWriteIndex: j * 2 + 1 }
-        : undefined;
-      encodeWork(commandEncoder, j, timestamps);
+      const ts = record ? { querySet, beginningOfPassWriteIndex: j * 2, endOfPassWriteIndex: j * 2 + 1 } : undefined;
+      encodeWork(encoder, j, ts);
     }
-    device.queue.submit([commandEncoder.finish()]);
+    device.queue.submit([encoder.finish()]);
 
     if (!record) return { perIter: 0, wall: 0 };
 
-    // Wait for GPU work to complete before resolving timestamps
+    await device.queue.onSubmittedWorkDone();
+    const resolveEnc = device.createCommandEncoder();
+    resolveEnc.resolveQuerySet(querySet, 0, ITERATIONS_PER_RUN * 2, resolveBuffer, 0);
+    resolveEnc.copyBufferToBuffer(resolveBuffer, 0, resultBuffer, 0, resultBuffer.size);
+    device.queue.submit([resolveEnc.finish()]);
     await device.queue.onSubmittedWorkDone();
 
-    // Resolve timestamps in separate command buffer
-    const resolveEncoder = device.createCommandEncoder();
-    resolveEncoder.resolveQuerySet(querySetPerIter, 0, ITERATIONS_PER_RUN * 2, resolveBufferPerIter, 0);
-    resolveEncoder.copyBufferToBuffer(resolveBufferPerIter, 0, resultBufferPerIter, 0, resultBufferPerIter.size);
-    device.queue.submit([resolveEncoder.finish()]);
-    await device.queue.onSubmittedWorkDone();
-
-    await resultBufferPerIter.mapAsync(GPUMapMode.READ);
-    const timesPerIter = new BigUint64Array(resultBufferPerIter.getMappedRange());
-    let sumPerIter = 0;
+    await resultBuffer.mapAsync(GPUMapMode.READ);
+    const times = new BigUint64Array(resultBuffer.getMappedRange());
+    let sum = 0;
     for (let j = 0; j < ITERATIONS_PER_RUN; j++) {
-      sumPerIter += Number(timesPerIter[j * 2 + 1] - timesPerIter[j * 2]);
+      sum += Number(times[j * 2 + 1] - times[j * 2]);
     }
-    // Wall time = from start of first pass to end of last pass
-    const wall = Number(timesPerIter[(ITERATIONS_PER_RUN - 1) * 2 + 1] - timesPerIter[0]);
-    resultBufferPerIter.unmap();
-
-    return { perIter: sumPerIter / ITERATIONS_PER_RUN, wall: wall / ITERATIONS_PER_RUN };
+    const wall = Number(times[(ITERATIONS_PER_RUN - 1) * 2 + 1] - times[0]);
+    resultBuffer.unmap();
+    return { perIter: sum / ITERATIONS_PER_RUN, wall: wall / ITERATIONS_PER_RUN };
   };
 
-  const encodeCompute: WorkEncoder = (encoder, j, timestamps) => {
-    const pass = encoder.beginComputePass(timestamps ? { timestampWrites: timestamps } : undefined);
-    pass.setPipeline(jacobiComputePipeline);
-    pass.setBindGroup(0, computeBindGroups[j % 2]);
+  const encodeCompute = (enc: GPUCommandEncoder, j: number, ts?: { querySet: GPUQuerySet; beginningOfPassWriteIndex: number; endOfPassWriteIndex: number }) => {
+    const pass = enc.beginComputePass(ts ? { timestampWrites: ts } : undefined);
+    pass.setPipeline(computePipeline);
+    pass.setBindGroup(0, j % 2 === 0 ? computeBindA : computeBindB);
     pass.dispatchWorkgroups(wgX, wgY);
     pass.end();
   };
 
-  const encodeFragment: WorkEncoder = (encoder, j, timestamps) => {
-    const pass = encoder.beginRenderPass({
-      colorAttachments: [colorAttachment(pressure.write)],
-      ...(timestamps && { timestampWrites: timestamps }),
+  const encodeFragment = (enc: GPUCommandEncoder, j: number, ts?: { querySet: GPUQuerySet; beginningOfPassWriteIndex: number; endOfPassWriteIndex: number }) => {
+    const target = j % 2 === 0 ? texB : texA;
+    const pass = enc.beginRenderPass({
+      colorAttachments: [{ view: target.createView(), loadOp: "load", storeOp: "store" }],
+      ...(ts && { timestampWrites: ts }),
     });
-    pass.setPipeline(jacobiPipeline);
-    pass.setBindGroup(0, divergenceReadGroup);
-    pass.setBindGroup(1, pressurePair.read());
-    pass.draw(4, 1, 0, 0);
+    pass.setPipeline(fragPipeline);
+    pass.setBindGroup(0, j % 2 === 0 ? fragBindA : fragBindB);
+    pass.draw(4);
     pass.end();
-    pressure.swap();
   };
 
-  const measureCompute = (record: boolean) => measure(record, encodeCompute);
-  const measureFragment = (record: boolean) => measure(record, encodeFragment);
-
-  // Warmup - alternate to stabilize GPU clocks
+  // Warmup
   for (let i = 0; i < WARMUP_RUNS; i++) {
-    await measureCompute(false);
-    await measureFragment(false);
+    await measure(false, encodeCompute);
+    await measure(false, encodeFragment);
   }
 
-  // Measure - interleaved to avoid thermal bias
+  // Measure
   const computePerIter: number[] = [];
   const computeWall: number[] = [];
   const fragmentPerIter: number[] = [];
   const fragmentWall: number[] = [];
 
   for (let i = 0; i < MEASURE_RUNS; i++) {
-    const c = await measureCompute(true);
+    const c = await measure(true, encodeCompute);
     computePerIter.push(c.perIter);
     computeWall.push(c.wall);
-    const f = await measureFragment(true);
+    const f = await measure(true, encodeFragment);
     fragmentPerIter.push(f.perIter);
     fragmentWall.push(f.wall);
   }
 
-  const computePerIterStats = stats(computePerIter);
-  const computeWallStats = stats(computeWall);
-  const fragmentPerIterStats = stats(fragmentPerIter);
-  const fragmentWallStats = stats(fragmentWall);
-
+  const cpi = stats(computePerIter), cw = stats(computeWall);
+  const fpi = stats(fragmentPerIter), fw = stats(fragmentWall);
   const fmt = (ns: number) => (ns / 1000).toFixed(2);
 
   console.log("=== Per-Iteration Timing (sum of individual pass durations) ===");
-  console.log(`Fragment: median=${fmt(fragmentPerIterStats.median)} mean=${fmt(fragmentPerIterStats.mean)}±${fmt(fragmentPerIterStats.stddev)} us`);
-  console.log(`Compute:  median=${fmt(computePerIterStats.median)} mean=${fmt(computePerIterStats.mean)}±${fmt(computePerIterStats.stddev)} us`);
-  console.log(`Speedup: ${(fragmentPerIterStats.median / computePerIterStats.median).toFixed(2)}x`);
+  console.log(`Fragment: median=${fmt(fpi.median)} mean=${fmt(fpi.mean)}±${fmt(fpi.stddev)} us`);
+  console.log(`Compute:  median=${fmt(cpi.median)} mean=${fmt(cpi.mean)}±${fmt(cpi.stddev)} us`);
+  console.log(`Speedup: ${(fpi.median / cpi.median).toFixed(2)}x`);
 
   console.log("=== Wall-Clock Timing (total time ÷ iterations) ===");
-  console.log(`Fragment: median=${fmt(fragmentWallStats.median)} mean=${fmt(fragmentWallStats.mean)}±${fmt(fragmentWallStats.stddev)} us`);
-  console.log(`Compute:  median=${fmt(computeWallStats.median)} mean=${fmt(computeWallStats.mean)}±${fmt(computeWallStats.stddev)} us`);
-  console.log(`Speedup: ${(fragmentWallStats.median / computeWallStats.median).toFixed(2)}x`);
+  console.log(`Fragment: median=${fmt(fw.median)} mean=${fmt(fw.mean)}±${fmt(fw.stddev)} us`);
+  console.log(`Compute:  median=${fmt(cw.median)} mean=${fmt(cw.mean)}±${fmt(cw.stddev)} us`);
+  console.log(`Speedup: ${(fw.median / cw.median).toFixed(2)}x`);
 
   console.log("=== Overhead (wall - perIter) ===");
-  const computeOverhead = computeWallStats.median - computePerIterStats.median;
-  const fragmentOverhead = fragmentWallStats.median - fragmentPerIterStats.median;
-  console.log(`Fragment overhead: ${fmt(fragmentOverhead)} us/iter`);
-  console.log(`Compute overhead:  ${fmt(computeOverhead)} us/iter`);
+  console.log(`Fragment overhead: ${fmt(fw.median - fpi.median)} us/iter`);
+  console.log(`Compute overhead:  ${fmt(cw.median - cpi.median)} us/iter`);
 
   // Cleanup
-  querySetPerIter.destroy();
-  resolveBufferPerIter.destroy();
-  resultBufferPerIter.destroy();
+  querySet.destroy();
+  resolveBuffer.destroy();
+  resultBuffer.destroy();
+  texA.destroy();
+  texB.destroy();
 };
